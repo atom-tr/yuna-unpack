@@ -1,12 +1,18 @@
 // ██████ Integrations █████████████████████████████████████████████████████████ */
 
 // —— File system
-const fs        = require("fs-extra");
+import fs from "fs-extra";
 // —— Terminal string styling done right
-const chalk     = require("chalk");
+import chalk from "chalk";
 // —— Beautiful color gradients in terminal output
-const gradients = require("gradient-string");
-const path      = require('path');
+import gradients from "gradient-string";
+import path from "path";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ██████ dapta.ack decryption key █████████████████████████████████████████████
 
@@ -67,7 +73,8 @@ const timerStart = () => start = +new Date(),
 timerStart();
 
 // —— Importing the "data.pack" file using streams
-const { createReadStream } = require('fs-extra');
+// import fs from 'fs-extra';
+const { createReadStream } = fs;
 
 const readStream = createReadStream("./data.pack", { highWaterMark: 1024 * 1024 }); // 1 MB chunks
 
@@ -166,33 +173,26 @@ readStream.on('end', async () => {
 
 
     async function read(fileFormat) {
-
-        let i     = 0,
+        let i = 0,
             total = 0,
-            news  = [];
+            news = [];
 
         timerStart();
 
-        while ( (i = dataPack.indexOf(fileFormat[0], i + 1)) !== -1 ) {
+        while ((i = dataPack.indexOf(fileFormat[0], i + 1)) !== -1) {
+            const fileName = cleanPath(dataPack.slice(i - 180, i), fileFormat),
+                  content = dataPack.slice(i, dataPack.indexOf(fileFormat[1], i + 1));
 
-            const fileName = cleanPath(dataPack.slice( i - 180, i ), fileFormat),
-                  content = dataPack.slice( i, dataPack.indexOf(fileFormat[1], i + 1) );
-
-            total++;;
+            total++;
 
             try {
-
                 if (!await fs.pathExists(`output/${fileName}`)) {
                     fs.outputFileSync(`output/${fileName}`, content);
-
                     news.push(fileName);
-
                 }
-
             } catch (err) {
                 console.error(err);
             }
-
         }
 
         console.log(chalk.green(
@@ -204,17 +204,27 @@ readStream.on('end', async () => {
         ));
 
         if (news.length) {
-
-            const now       = new Date();
-                  dateLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
-                  str       = dateLocal.toISOString().slice(0, 19).replace(/-/g, "-").replace("T", "_");
+            const now = new Date();
+            const dateLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+            const str = dateLocal.toISOString().slice(0, 10) + "_" + dateLocal.toISOString().slice(11, 19).replace(":", "");
 
             // Ensure the Logs directory exists
-            const logsDir = path.join(__dirname, 'logs');
-            await fs.ensureDir(logsDir); // Create the directory if it doesn't exist
+            const logsDir = path.join(__dirname, 'logs'); // Define logsDir
+            try {
+                await fs.ensureDir(logsDir); // Create the directory if it doesn't exist
+                console.log(`Logs directory created at: ${logsDir}`);
+            } catch (err) {
+                console.error(`Error creating logs directory: ${err}`);
+                return; // Exit the function if directory creation fails
+            }
 
-            fs.outputFileSync(path.join(logsDir, `${str}.log`), JSON.stringify(news, null, 2));
-
+            // Now write the log file
+            try {
+                await fs.outputFile(path.join(logsDir, `${str}.log`), JSON.stringify(news, null, 2));
+                console.log(`Log file created: ${str}.log`);
+            } catch (err) {
+                console.error(`Error writing log file: ${err}`);
+            }
         }
     }
 

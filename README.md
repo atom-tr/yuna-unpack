@@ -1,5 +1,13 @@
 # Yuna Unpack
 
+```sh
+   ____     _       ____
+  / __/__  (_)___  / __/__ _  _____ ___
+ / _// _ \/ / __/ _\ \/ -_) |/ / -_) _ \
+/___/ .__/_/\__/ /___/\__/|___/\__/_//_/
+   /_/           › Assets extractor
+```
+
 An asset extractor for Epic Seven.
 
 Original version by https://github.com/Asgarrrr, but not found now
