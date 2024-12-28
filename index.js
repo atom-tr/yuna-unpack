@@ -9,12 +9,13 @@ import gradients from "gradient-string";
 import path from "path";
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { SingleBar, Presets } from 'cli-progress'; // Import cli-progress
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// ██████ dapta.ack decryption key █████████████████████████████████████████████
+// ██████ data.pack decryption key █████████████████████████████████████████████
 
 const master = Buffer.from([
     0x21, 0x0c, 0xed, 0x10, 0xd8, 0x81, 0xd7, 0xa3, 0xfa, 0x9b, 0xc9, 0x7a,
@@ -30,7 +31,7 @@ const master = Buffer.from([
     0x11, 0x21, 0xef, 0xd5, 0xf3, 0x8a, 0x02, 0x1f, 0x06
 ]);
 
-// ██████ Files signatures ██████████████████████████████████████████████████████
+// ██████ Files signatures █████████████████████████████████████████████████████████ */
 
 const png = [
     Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
@@ -50,7 +51,7 @@ const jpg = [
 // —— Just an ascii header because I like it.
 console.log(
     chalk.bold(
-        gradients("#8EA6DB", "#7354F6")([
+        gradients(['#8EA6DB', '#7354F6']).multiline([
             "   ____     _       ____                ",
             "  / __/__  (_)___  / __/__ _  _____ ___ ",
             " / _// _ \\/ / __/ _\\ \\/ -_) |/ / -_) _ \\",
@@ -63,7 +64,7 @@ console.log(
     + chalk.italic.grey( "—— This action may take some time and depends on the performance of your computer.\n" )
 );
 
-// —————————————————————————————————————————————————————————————————————————————
+// ————————————————————————————————————————————————————————————————————————————
 
 let start;
 
@@ -73,10 +74,30 @@ const timerStart = () => start = +new Date(),
 timerStart();
 
 // —— Importing the "data.pack" file using streams
-// import fs from 'fs-extra';
 const { createReadStream } = fs;
 
-const readStream = createReadStream("./data.pack", { highWaterMark: 1024 * 1024 }); // 1 MB chunks
+// Increase the highWaterMark to read larger chunks
+const readStream = createReadStream("./data.pack", { highWaterMark: 1024 * 1024 * 4 }); // 4 MB chunks
+
+// Create a new progress bar instance
+const progressBar = new SingleBar({
+    format: 'Progress | {bar} | {percentage}% | {value}/{total} Chunks',
+    barCompleteChar: '\u2588',
+    barIncompleteChar: '\u2591',
+    hideCursor: true
+});
+
+// Create a new progress bar instance for decryption
+const decryptionProgressBar = new SingleBar({
+    format: 'Decrypting | {bar} | {percentage}% | {value}/{total} Bytes',
+    barCompleteChar: '\u2588',
+    barIncompleteChar: '\u2591',
+    hideCursor: true
+});
+
+// Get the total size of the data.pack file for progress calculation
+const totalSize = fs.statSync("./data.pack").size;
+let bytesRead = 0;
 
 readStream.on('error', (err) => {
     console.error(chalk.red(`✗ ——— ${err.code === "ENOENT" ? "No 'data.pack' file found." : err}`));
@@ -84,25 +105,50 @@ readStream.on('error', (err) => {
 });
 
 let KeyIndex = 0;
-let dataPack = Buffer.alloc(0); // Initialize an empty buffer to accumulate data
+let dataPackChunks = []; // Use an array to accumulate chunks
 
 readStream.on('data', (chunk) => {
-    dataPack = Buffer.concat([dataPack, chunk]); // Accumulate data in chunks
+    dataPackChunks.push(chunk); // Accumulate data in chunks
+    bytesRead += chunk.length; // Update bytes read
+    progressBar.update(bytesRead); // Update progress bar
 });
 
+// Start the progress bar with the total size
+progressBar.start(totalSize, 0);
+
 readStream.on('end', async () => {
+    progressBar.stop(); // Stop the progress bar when done
+    // Concatenate all chunks at once
+    let dataPack = Buffer.concat(dataPackChunks);
+
     console.log(chalk.green(`\n✓ ——— Data.pack imported ( ${chalk.italic(timerEnd())}ms ) \n`));
 
-    // Perform decryption and processing as before
+    // Start the decryption progress bar
+    decryptionProgressBar.start(dataPack.length, 0);
+
+    const masterLength = master.length; // Cache master length for performance
+    const updateInterval = 256; // Update progress bar every 256 bytes
     for (let i = 0; i < dataPack.length; i++) {
-        dataPack[i] = dataPack[i] ^ master[KeyIndex];
-        KeyIndex = (KeyIndex + 1) % master.length; // Use modulo for wrapping
+        const originalByte = dataPack[i]; // Store the original byte for debugging
+        dataPack[i] ^= master[KeyIndex]; // Use XOR assignment for faster operation
+        KeyIndex = (KeyIndex + 1) % masterLength; // Use modulo for wrapping
+
+        // Update the decryption progress bar every 'updateInterval' bytes
+        if (i % updateInterval === 0) {
+            decryptionProgressBar.update(i);
+        }
     }
 
-    /* —— dataPack.slice(0, 5) : <Buffer 50 4c 50 63 4b 01 26 00 00 00>
-        = "PLPcK" */
+    // Ensure the progress bar reaches 100% at the end
+    decryptionProgressBar.update(dataPack.length);
+    
+    // Stop the decryption progress bar when done
+    decryptionProgressBar.stop();
 
-    if (dataPack.slice(0, 6).equals(
+    // Debugging output to check the first few bytes of decrypted data
+    console.log("Decrypted data (first 10 bytes):", Buffer.from(dataPack.subarray(0, 10)));
+
+    if (Buffer.from(dataPack.subarray(0, 6)).equals(
         Buffer.from([80, 76, 80, 99, 75, 1])
     )) {
         console.log(chalk.green(`✓ ——— Decryption seems to be correct ( ${chalk.italic(timerEnd())}ms ) \n`));
@@ -130,11 +176,8 @@ readStream.on('end', async () => {
     let accumulator = [];
 
     function cleanPath(path, fileFormat) {
-
         if (path.includes(fileFormat[1])) {
-
-            path = path
-                .slice(path.lastIndexOf(fileFormat[1]) + 27, path.length)
+            path = Buffer.from(path.subarray(path.lastIndexOf(fileFormat[1]) + 27))
                 .toString()
                 .split("/");
 
@@ -149,8 +192,7 @@ readStream.on('end', async () => {
 
         } else {
 
-            path = path
-                .slice(path.lastIndexOf(0x00), path.length)
+            path = Buffer.from(path.subarray(path.lastIndexOf(0x00), path.length))
                 .toString()
                 .split("/");
 
@@ -180,8 +222,8 @@ readStream.on('end', async () => {
         timerStart();
 
         while ((i = dataPack.indexOf(fileFormat[0], i + 1)) !== -1) {
-            const fileName = cleanPath(dataPack.slice(i - 180, i), fileFormat),
-                  content = dataPack.slice(i, dataPack.indexOf(fileFormat[1], i + 1));
+            const fileName = cleanPath(Buffer.from(dataPack.subarray(i - 180, i)), fileFormat),
+                  content = Buffer.from(dataPack.subarray(i, dataPack.indexOf(fileFormat[1], i + 1)));
 
             total++;
 

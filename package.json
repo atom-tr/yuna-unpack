@@ -1,5 +1,5 @@
 {
-  "type": "module", 
+  "type": "module",
   "name": "data-pack-extractor",
   "version": "1.0.1",
   "description": "",
@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "chalk": "5.4.1",
+    "cli-progress": "^3.12.0",
     "fs-extra": "11.2.0",
     "gradient-string": "3.0.0"
   },
